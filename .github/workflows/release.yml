@@ -18,6 +18,7 @@ jobs:
       contents: write
       id-token: write
     env:
+      NPM_CONFIG_REGISTRY: ${{ vars.CFS_NPM_REGISTRY || 'https://packagefeedproxy.microsoft.io/npm/' }}
       ATTESTED_FILES: |-
         action.yml
         dist/index.js
