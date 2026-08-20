@@ -723,8 +723,7 @@ async function graphqlAllowingInaccessibleApps(
       errors.length > 0 &&
       errors.every(
         entry =>
-          entry.type === 'FORBIDDEN' &&
-          (entry.path ?? []).includes('checkSuite')
+          entry.type === 'FORBIDDEN' && isCheckSuiteAppMetadataPath(entry.path)
       )
     if (!tolerable) {
       throw error
@@ -734,6 +733,17 @@ async function graphqlAllowingInaccessibleApps(
     )
     return response.data
   }
+}
+
+function isCheckSuiteAppMetadataPath(
+  path: readonly (number | string)[] | undefined
+): boolean {
+  return (
+    (path?.at(-2) === 'checkSuite' && path.at(-1) === 'app') ||
+    (path?.at(-3) === 'checkSuite' &&
+      path.at(-2) === 'app' &&
+      path.at(-1) === 'databaseId')
+  )
 }
 
 async function loadAllCheckResults(

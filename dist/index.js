@@ -39752,14 +39752,19 @@ async function graphqlAllowingInaccessibleApps(octokit, query, variables) {
         const tolerable = response.data !== undefined &&
             response.data !== null &&
             errors.length > 0 &&
-            errors.every(entry => entry.type === 'FORBIDDEN' &&
-                (entry.path ?? []).includes('checkSuite'));
+            errors.every(entry => entry.type === 'FORBIDDEN' && isCheckSuiteAppMetadataPath(entry.path));
         if (!tolerable) {
             throw error;
         }
         warning(`⚠️ ${errors.length} check result(s) belong to a GitHub App that this workflow's token cannot view - continuing without that App metadata`);
         return response.data;
     }
+}
+function isCheckSuiteAppMetadataPath(path) {
+    return ((path?.at(-2) === 'checkSuite' && path.at(-1) === 'app') ||
+        (path?.at(-3) === 'checkSuite' &&
+            path.at(-2) === 'app' &&
+            path.at(-1) === 'databaseId'));
 }
 async function loadAllCheckResults(octokit, pullRequestNumber, commit, statusCheckRollup) {
     const checkResults = [...statusCheckRollup.contexts.nodes];

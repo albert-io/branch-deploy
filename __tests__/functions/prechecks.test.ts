@@ -2494,6 +2494,78 @@ test('recovers paginated check data when a check suite App is not viewable by th
   assertCalledTimes(graphQLOK, 2)
 })
 
+test('rejects a failed required check with inaccessible App metadata on a later page', async () => {
+  const page = additionalCheckPage(
+    [
+      {
+        checkSuite: {app: null},
+        conclusion: 'FAILURE',
+        isRequired: true,
+        name: 'second-check'
+      }
+    ],
+    LAST_PAGE
+  )
+  mockCheckPages(
+    initialCheckPage(
+      [{conclusion: 'SUCCESS', isRequired: true, name: 'first-check'}],
+      {endCursor: 'cursor-1', hasNextPage: true},
+      'SUCCESS'
+    ),
+    inaccessibleAppError(page, [
+      {path: [...PAGE_QUERY_APP_PATH, 'databaseId'], type: 'FORBIDDEN'}
+    ])
+  )
+  data.inputs.checks = 'required'
+
+  assert.deepStrictEqual(await prechecks(context, octokit, data), {
+    message:
+      '### ⚠️ Cannot proceed with deployment\n\n- reviewDecision: `APPROVED`\n- commitStatus: `FAILURE`\n\n> Your pull request is approved but CI checks are failing',
+    status: false
+  })
+  assertCalledTimes(graphQLOK, 2)
+})
+
+test('fails closed on a null check node recovered with inaccessible App metadata', async () => {
+  const partial = initialCheckPage(
+    [unsafeInvalidValue<RawCheckResult>(null)],
+    LAST_PAGE
+  )
+  graphQLOK.mock.mockImplementationOnce(() =>
+    Promise.reject(
+      inaccessibleAppError(partial, [
+        {path: INITIAL_QUERY_APP_PATH, type: 'FORBIDDEN'}
+      ])
+    )
+  )
+
+  await assertChecksUnavailable()
+})
+
+test('fails closed on duplicate policy checks recovered without App identities', async () => {
+  const check = {
+    checkSuite: {app: null},
+    conclusion: 'FAILURE',
+    databaseId: 10,
+    id: 'older',
+    isRequired: true,
+    name: 'ci'
+  }
+  const partial = initialCheckPage(
+    [check, {...check, conclusion: 'SUCCESS', databaseId: 11, id: 'newer'}],
+    LAST_PAGE
+  )
+  graphQLOK.mock.mockImplementationOnce(() =>
+    Promise.reject(
+      inaccessibleAppError(partial, [
+        {path: INITIAL_QUERY_APP_PATH, type: 'FORBIDDEN'}
+      ])
+    )
+  )
+
+  await assertChecksUnavailable()
+})
+
 test('propagates GraphQL failures without a partial response', async () => {
   graphQLOK.mock.mockImplementationOnce(() =>
     Promise.reject(new Error('GraphQL down'))
@@ -2535,6 +2607,31 @@ for (const [name, error] of [
     'a FORBIDDEN error is outside check suite App data',
     inaccessibleAppError(initialCheckPage([], LAST_PAGE), [
       {path: ['repository', 'pullRequest'], type: 'FORBIDDEN'}
+    ])
+  ],
+  [
+    'a FORBIDDEN error is for another check suite field',
+    inaccessibleAppError(initialCheckPage([], LAST_PAGE), [
+      {
+        path: [...INITIAL_QUERY_APP_PATH.slice(0, -1), 'workflowRun'],
+        type: 'FORBIDDEN'
+      }
+    ])
+  ],
+  [
+    'a FORBIDDEN error is for another App field',
+    inaccessibleAppError(initialCheckPage([], LAST_PAGE), [
+      {path: [...INITIAL_QUERY_APP_PATH, 'slug'], type: 'FORBIDDEN'}
+    ])
+  ],
+  [
+    'the response mixes inaccessible App metadata with an unrelated error',
+    inaccessibleAppError(initialCheckPage([], LAST_PAGE), [
+      {path: INITIAL_QUERY_APP_PATH, type: 'FORBIDDEN'},
+      {
+        path: ['repository', 'pullRequest', 'mergeStateStatus'],
+        type: 'FORBIDDEN'
+      }
     ])
   ]
 ] as const satisfies readonly (readonly [string, Error])[]) {
